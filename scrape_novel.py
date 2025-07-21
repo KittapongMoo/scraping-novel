@@ -35,9 +35,6 @@ def load_urls():
     if not os.path.exists(URLS_FILE):
         print(f"❌ {URLS_FILE} not found!")
         print(f"💡 Please create {URLS_FILE} and add your novel URLs, one per line.")
-        print(f"   Example content:")
-        print(f"   https://katreadingcafe.com/series/genderswap-reincarnation-i-raised-the-strongest-player/")
-        print(f"   https://katreadingcafe.com/series/another-novel/")
         return []
     
     with open(URLS_FILE, 'r', encoding='utf-8') as f:
@@ -63,7 +60,7 @@ def select_url(urls):
         # Extract novel name from URL for display
         novel_name = url.split('/')[-2].replace('-', ' ').title()
         print(f"   {i}. {novel_name}")
-        print(f"      {url}")
+        # print(f"      {url}")
     
     while True:
         try:
