@@ -51,14 +51,7 @@ try:
 
     # Use XPath to find element with exact text "Vol. 1"
     vol1_selectors = [
-        "//div[text()='Vol. 1']",           # Exact text match for div
         "//span[text()='Vol. 1']",          # Exact text match for span
-        "//button[text()='Vol. 1']",        # Exact text match for button
-        "//h3[text()='Vol. 1']",            # Exact text match for heading
-        "//h4[text()='Vol. 1']",            # Exact text match for heading
-        "//p[text()='Vol. 1']",             # Exact text match for paragraph
-        "//*[text()='Vol. 1']",             # Any element with exact text
-        "//div[normalize-space(text())='Vol. 1']",  # Exact text ignoring whitespace
         "//span[normalize-space(text())='Vol. 1']", # Exact text ignoring whitespace
     ]
     
