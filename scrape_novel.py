@@ -29,7 +29,7 @@ def get_latest_chapter():
 
 # Prepare Chrome
 options = Options()
-# options.add_argument("--headless")
+options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-blink-features=AutomationControlled")
 
@@ -63,10 +63,24 @@ try:
     ]
     
     vol1_element = None
+    selected_selector = None
     for selector in vol1_selectors:
         try:
             vol1_element = wait.until(EC.element_to_be_clickable((By.XPATH, selector)))
+            selected_selector = selector
             print(f"✅ Found exact Vol. 1 element with selector: {selector}")
+            
+            # Show additional details about the clicked element
+            element_tag = vol1_element.tag_name
+            element_text = vol1_element.text
+            element_class = vol1_element.get_attribute("class") or "No class"
+            element_id = vol1_element.get_attribute("id") or "No ID"
+            
+            print(f"   📋 Element details:")
+            print(f"      Tag: <{element_tag}>")
+            print(f"      Text: '{element_text}'")
+            print(f"      Class: '{element_class}'")
+            print(f"      ID: '{element_id}'")
             break
         except:
             continue
@@ -88,7 +102,7 @@ try:
     time.sleep(1)
     
     vol1_element.click()
-    print("✅ Clicked exact Vol. 1 to expand chapter list")
+    print(f"✅ Successfully clicked Vol. 1 element using selector: {selected_selector}")
     time.sleep(5)  # Wait longer for chapters to load
 
     # 2️⃣ Gather all chapter links under Vol. 1
