@@ -1,5 +1,6 @@
 # Ignore chapters folder
 chapters/
+novel_urls.txt
 
 # Ignore Python cache files
 __pycache__/
