@@ -23,13 +23,13 @@ def ask_chapters_to_download():
     """Ask user how many chapters to download"""
     while True:
         try:
-            chapters = input("\n📚 How many chapters do you want to download? (1-50): ").strip()
+            chapters = input("\n📚 How many chapters do you want to download? (1-1000): ").strip()
             chapters_num = int(chapters)
-            if 1 <= chapters_num <= 50:
+            if 1 <= chapters_num <= 1000:
                 print(f"✅ Will download {chapters_num} chapters")
                 return chapters_num
             else:
-                print("❌ Please enter a number between 1 and 50")
+                print("❌ Please enter a number between 1 and 1000")
         except ValueError:
             print("❌ Please enter a valid number")
         except KeyboardInterrupt:
