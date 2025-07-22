@@ -1,0 +1,22 @@
+# Novel URLs Configuration File
+# Add your novel URLs here, one per line
+# Lines starting with # are comments and will be ignored
+
+# Example URLs (remove these and add your own):
+
+# KatReadingCafe novels:
+# https://katreadingcafe.com/manga/genderswap-reincarnation-i-raised-the-strongest-player/
+# https://katreadingcafe.com/manga/ms-villainess-playing-with-the-heroines-feelings-will-lead-to-retribution-you-know/
+
+# NovelBin novels:
+# https://novelbin.me/book/seizing-destiny-from-heavens-hands
+
+# Instructions:
+# 1. Remove the # symbol from the URLs you want to use
+# 2. Add new URLs by copying them from your browser
+# 3. Each URL should be on its own line
+# 4. Save this file before running scrape_novel.py
+
+# Supported websites:
+# - katreadingcafe.com
+# - novelbin.me

@@ -1,0 +1,9 @@
+# Novel Scraper Dependencies
+selenium>=4.0.0
+webdriver-manager>=4.0.0
+
+# PDF Formatter Dependencies
+reportlab>=4.0.0
+
+# Optional: For better Chrome driver management
+# chromedriver-autoinstaller>=0.6.0
