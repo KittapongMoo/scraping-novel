@@ -1,6 +1,9 @@
 """
 Novel Chapter to PDF Formatter
 Converts scraped novel chapters to beautifully formatted PDF files
+
+run using this command:
+& "E:/VSCODE/scraping novel/.venv/Scripts/python.exe" "e:\VSCODE\scraping novel\format_novel_to_pdf.py"
 """
 
 import os
