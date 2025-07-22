@@ -389,7 +389,7 @@ def scrape_novelbin_multiple(series_url, chapters_per_run, start, end, output_di
 def setup_chrome_driver():
     """Setup and return Chrome driver with optimal options"""
     options = Options()
-    # options.add_argument("--headless")  # Enable headless mode
+    options.add_argument("--headless")  # Enable headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-web-security")
