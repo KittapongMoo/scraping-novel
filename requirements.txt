@@ -5,5 +5,9 @@ webdriver-manager>=4.0.0
 # PDF Formatter Dependencies
 reportlab>=4.0.0
 
+# Voice notification dependencies
+pywin32>=306  # For Windows SAPI text-to-speech
+pyttsx3>=2.90  # Alternative TTS engine
+
 # Optional: For better Chrome driver management
 # chromedriver-autoinstaller>=0.6.0

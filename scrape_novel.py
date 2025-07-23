@@ -14,14 +14,31 @@ import os
 import re
 import glob
 import random
+import traceback
 import winsound  # For Windows notification sound
+
+# Try to import text-to-speech modules
+try:
+    import win32com.client
+    TTS_AVAILABLE = True
+except ImportError:
+    try:
+        import pyttsx3
+        TTS_AVAILABLE = True
+    except ImportError:
+        TTS_AVAILABLE = False
 
 # Configuration
 URLS_FILE = "novel_urls.txt"
 BASE_OUTPUT_DIR = "chapters"
 
-def play_notification_sound(success=True):
-    """Play notification sound when process finishes"""
+# Voice notification settings
+VOICE_ENABLED = True  # Set to False to disable voice notifications
+VOICE_RATE = 180  # Speech rate (words per minute)
+USE_GREETING = True  # Include time-based greeting (Good morning, etc.)
+
+def play_notification_sound(success=True, message=None):
+    """Play notification sound and speak message when process finishes"""
     try:
         if success:
             # Success sound - play system default sound
@@ -37,6 +54,121 @@ def play_notification_sound(success=True):
     except Exception:
         # Fallback for systems without sound or if winsound fails
         print("\a")  # Terminal bell character
+    
+    # Add voice notification
+    if message:
+        speak_message(message)
+
+def speak_message(message):
+    """Speak a message using text-to-speech"""
+    if not VOICE_ENABLED:
+        print(f"🔊 Voice disabled. Message: {message}")
+        return
+        
+    if not TTS_AVAILABLE:
+        print(f"🔊 TTS not available. Message: {message}")
+        return
+    
+    try:
+        # Try Windows SAPI first (most reliable on Windows)
+        try:
+            import win32com.client
+            speaker = win32com.client.Dispatch("SAPI.SpVoice")
+            
+            # Try to set a more pleasant voice
+            voices = speaker.GetVoices()
+            for voice in voices:
+                voice_name = voice.GetDescription()
+                # Prefer female voices or specific good ones
+                if any(name in voice_name.lower() for name in ['zira', 'female', 'eva', 'aria']):
+                    speaker.Voice = voice
+                    break
+            
+            # Set speech rate (0-10 scale, default is around 0)
+            speaker.Rate = max(-2, min(2, (VOICE_RATE - 200) // 50))  # Convert to SAPI scale
+            
+            speaker.Speak(message)
+            print(f"🔊 Spoken: {message}")
+            return
+        except:
+            pass
+        
+        # Fallback to pyttsx3
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            
+            # Configure voice settings
+            voices = engine.getProperty('voices')
+            if voices:
+                # Try to use a female voice if available
+                for voice in voices:
+                    if any(name in voice.name.lower() for name in ['female', 'zira', 'eva', 'aria']):
+                        engine.setProperty('voice', voice.id)
+                        break
+            
+            # Set speech rate
+            engine.setProperty('rate', VOICE_RATE)
+            
+            engine.say(message)
+            engine.runAndWait()
+            print(f"🔊 Spoken: {message}")
+            return
+        except:
+            pass
+        
+        # If all else fails, try Windows PowerShell TTS
+        try:
+            import subprocess
+            # Use PowerShell Add-Type for text-to-speech
+            ps_command = f'''
+            Add-Type -AssemblyName System.Speech;
+            $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+            $synth.Rate = {max(-10, min(10, (VOICE_RATE - 200) // 20))};
+            $synth.Speak("{message}");
+            '''
+            subprocess.run(['powershell', '-Command', ps_command], 
+                          capture_output=True, timeout=15)
+            print(f"🔊 Spoken via PowerShell: {message}")
+            return
+        except:
+            pass
+            
+    except Exception as e:
+        print(f"🔊 Could not speak message: {e}")
+        print(f"💬 Message was: {message}")
+
+def announce_completion(downloaded, requested, success=True):
+    """Create and announce completion message"""
+    if success and downloaded > 0:
+        if downloaded == requested:
+            message = f"Download completed successfully! I have downloaded all {downloaded} chapters as requested."
+        else:
+            message = f"Download completed! I have downloaded {downloaded} out of {requested} requested chapters."
+    elif downloaded == 0:
+        message = "Download failed. No chapters were downloaded. Please check for errors."
+    else:
+        message = f"Download partially completed. I downloaded {downloaded} chapters, but some failed."
+    
+    # Add time-based greeting if enabled
+    if USE_GREETING:
+        import datetime
+        hour = datetime.datetime.now().hour
+        if 5 <= hour < 12:
+            greeting = "Good morning! "
+        elif 12 <= hour < 17:
+            greeting = "Good afternoon! "
+        elif 17 <= hour < 21:
+            greeting = "Good evening! "
+        else:
+            greeting = "Hello! "
+        
+        full_message = greeting + message
+    else:
+        full_message = message
+    
+    print(f"\n🎙️ Voice announcement: {full_message}")
+    play_notification_sound(success=success, message=full_message)
 
 def get_available_chapters_info(series_url, website_type):
     """Get information about available chapters from the website"""
@@ -146,11 +278,21 @@ def get_available_chapters_info(series_url, website_type):
             except:
                 pass
             
-            # Scroll to load chapters
-            for i in range(5):  # More scrolling to load more chapters
-                scroll_amount = random.randint(500, 1000)
+            # Scroll to load chapters more thoroughly
+            print("📜 Loading all available chapters...")
+            # First, scroll to bottom to trigger loading of all chapters
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(random.uniform(2, 3))
+            
+            # Then scroll incrementally to ensure all chapters are loaded
+            for i in range(8):  # Comprehensive scrolling
+                scroll_amount = random.randint(800, 1500)
                 driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
                 time.sleep(random.uniform(1, 2))
+            
+            # Final scroll to bottom to ensure everything is loaded
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(random.uniform(2, 3))
             
             # Find chapter links
             chapter_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/chapter-')]")
@@ -553,61 +695,262 @@ def scrape_novelbin_single_with_fresh_browser(series_url, target_chapter, output
         except:
             pass
         
-        # Scroll to load chapters
-        print("📜 Loading chapters...")
-        for i in range(3):
-            scroll_amount = random.randint(500, 1000)
+        # Advanced chapter loading with dynamic scroll detection
+        print("📜 Loading chapters with intelligent scrolling...")
+        
+        def get_current_chapters():
+            """Get all chapter links currently loaded on the page"""
+            # Try multiple selectors for chapter links
+            link_selectors = [
+                "//a[contains(@href, '/chapter-')]",
+                "//a[contains(@class, 'chapter')]",
+                ".chapter-item a",
+                ".list-chapter a",
+                "a[href*='chapter']"
+            ]
+            
+            all_links = []
+            for selector in link_selectors:
+                try:
+                    if selector.startswith("//"):
+                        links = driver.find_elements(By.XPATH, selector)
+                    else:
+                        links = driver.find_elements(By.CSS_SELECTOR, selector)
+                    all_links.extend(links)
+                except:
+                    continue
+            
+            return list(set(all_links))  # Remove duplicates
+        
+        # Initial scroll to load base content
+        driver.execute_script("window.scrollTo(0, 0);")  # Start from top
+        time.sleep(2)
+        
+        last_chapter_count = 0
+        max_iterations = 20
+        stable_count = 0
+        
+        for iteration in range(max_iterations):
+            # Scroll down incrementally
+            scroll_height = driver.execute_script("return document.body.scrollHeight;")
+            current_scroll = driver.execute_script("return window.pageYOffset;")
+            
+            # Scroll by 1/4 of remaining height or 1500px, whichever is smaller
+            remaining_height = scroll_height - current_scroll
+            scroll_amount = min(1500, remaining_height // 4) if remaining_height > 0 else 1500
+            
             driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-            time.sleep(random.uniform(1, 2))
-        
-        # Find the specific chapter URL
-        chapter_url = None
-        chapter_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/chapter-')]")
-        
-        for link in chapter_links:
-            href = link.get_attribute("href")
-            chapter_num_match = re.search(r'chapter-(\d+)', href)
-            if chapter_num_match:
-                chapter_num = int(chapter_num_match.group(1))
-                if chapter_num == target_chapter:
-                    chapter_url = href
+            time.sleep(random.uniform(2, 4))  # Wait longer for content to load
+            
+            # Check current chapter count
+            current_links = get_current_chapters()
+            current_count = len(current_links)
+            
+            print(f"📊 Iteration {iteration + 1}: Found {current_count} chapter links")
+            
+            # If no new chapters loaded, increment stable counter
+            if current_count == last_chapter_count:
+                stable_count += 1
+                if stable_count >= 3:  # If count stable for 3 iterations, we're likely done
+                    print("📝 Chapter count stabilized, moving to search phase")
                     break
+            else:
+                stable_count = 0  # Reset if new content was loaded
+            
+            last_chapter_count = current_count
+            
+            # Also check if we've reached the bottom
+            new_scroll_height = driver.execute_script("return document.body.scrollHeight;")
+            if current_scroll + driver.execute_script("return window.innerHeight;") >= new_scroll_height - 100:
+                print("� Reached bottom of page")
+                break
+        
+        # Final aggressive scroll to absolute bottom
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        
+        # Now search for the target chapter
+        chapter_url = None
+        all_chapter_links = get_current_chapters()
+        found_chapters = []
+        
+        print(f"🔍 Analyzing {len(all_chapter_links)} total chapter links...")
+        
+        for link in all_chapter_links:
+            try:
+                href = link.get_attribute("href")
+                if not href:
+                    continue
+                    
+                # Try different regex patterns for chapter numbers
+                patterns = [
+                    r'chapter-(\d+)',
+                    r'ch-(\d+)',
+                    r'chapter/(\d+)',
+                    r'c(\d+)',
+                    r'chap-(\d+)'
+                ]
+                
+                chapter_num = None
+                for pattern in patterns:
+                    match = re.search(pattern, href)
+                    if match:
+                        chapter_num = int(match.group(1))
+                        break
+                
+                if chapter_num:
+                    found_chapters.append(chapter_num)
+                    if chapter_num == target_chapter:
+                        chapter_url = href
+                        print(f"✅ Found target chapter {target_chapter}: {href}")
+                        break
+            except Exception as e:
+                continue
+        
+        # Sort and show available chapters for debugging
+        found_chapters = sorted(list(set(found_chapters)))
+        if found_chapters:
+            print(f"📋 Available chapters: {min(found_chapters)} - {max(found_chapters)} ({len(found_chapters)} total)")
+            # Show chapters around the target
+            nearby_chapters = [ch for ch in found_chapters if abs(ch - target_chapter) <= 10]
+            if nearby_chapters:
+                print(f"🎯 Chapters near {target_chapter}: {nearby_chapters}")
+        
+        # If still not found, try URL construction as fallback
+        if not chapter_url and found_chapters:
+            print(f"🔧 Chapter {target_chapter} not found in list, trying URL construction...")
+            
+            # Analyze existing URLs to construct the target URL
+            sample_urls = []
+            for link in all_chapter_links[:10]:  # Take first 10 for analysis
+                href = link.get_attribute("href")
+                if href and 'chapter-' in href:
+                    sample_urls.append(href)
+            
+            if sample_urls:
+                # Try to construct the URL based on pattern
+                base_url = sample_urls[0]
+                for pattern in [r'chapter-\d+', r'ch-\d+', r'c\d+']:
+                    if re.search(pattern, base_url):
+                        constructed_url = re.sub(pattern, f'chapter-{target_chapter}', base_url)
+                        print(f"🎯 Constructed URL: {constructed_url}")
+                        chapter_url = constructed_url
+                        break
         
         if not chapter_url:
-            print(f"❌ Chapter {target_chapter} not found in the list")
+            print(f"❌ Chapter {target_chapter} not found in the list after comprehensive search")
             print(f"💡 This might mean:")
             print(f"   - Chapter {target_chapter} doesn't exist yet")
             print(f"   - We've reached the end of available chapters")
             print(f"   - The chapter numbering might be different")
+            if found_chapters:
+                print(f"   - Try chapter {max(found_chapters)} instead (latest available)")
             return 0
         
         print(f"🌐 Found Chapter {target_chapter}: {chapter_url}")
         
         # Navigate directly to the chapter
+        print(f"📖 Loading chapter content...")
         driver.get(chapter_url)
-        time.sleep(random.uniform(2, 4))
+        time.sleep(random.uniform(3, 6))  # Give more time for content to load
         
-        # Extract content
-        title = driver.title.strip()
+        # Check if we got redirected or if page loaded properly
+        current_url = driver.current_url
+        if "chapter" not in current_url.lower():
+            print(f"⚠️ Warning: May have been redirected. Current URL: {current_url}")
+        
+        # Extract content with improved error handling
+        title = ""
         content = ""
-        selectors = [".chr-c", ".chapter-content", ".content", "#chr-content", ".reading-content", "article"]
         
-        for sel in selectors:
+        try:
+            title = driver.title.strip()
+            if not title or "404" in title or "not found" in title.lower():
+                print(f"❌ Chapter page seems invalid (title: {title})")
+                return 0
+        except:
+            title = f"Chapter {target_chapter}"
+        
+        # Try multiple content selectors with more comprehensive search
+        content_selectors = [
+            ".chr-c",           # Common NovelBin selector
+            ".chapter-content", 
+            ".content", 
+            "#chr-content", 
+            ".reading-content", 
+            "article",
+            ".chapter-body",
+            ".chapter-text",
+            ".text-left",
+            "#chapter-content",
+            ".entry-content",
+            ".post-content"
+        ]
+        
+        for sel in content_selectors:
             try:
                 content_element = driver.find_element(By.CSS_SELECTOR, sel)
-                content = content_element.text
-                print(f"✅ Found content using selector: {sel}")
-                break
+                content = content_element.text.strip()
+                if len(content) > 100:  # Ensure we got substantial content
+                    print(f"✅ Found content using selector: {sel} ({len(content)} characters)")
+                    break
+                else:
+                    print(f"⚠️ Selector {sel} found content but too short ({len(content)} chars)")
             except:
                 continue
         
-        if not content:
-            print(f"❌ Could not extract content for chapter {target_chapter}")
+        # If still no content, try alternative extraction methods
+        if not content or len(content) < 100:
+            print("🔍 Trying alternative content extraction methods...")
+            
+            # Method 1: Look for any large text blocks
+            try:
+                all_paragraphs = driver.find_elements(By.TAG_NAME, "p")
+                paragraph_texts = []
+                for p in all_paragraphs:
+                    text = p.text.strip()
+                    if len(text) > 50:  # Only substantial paragraphs
+                        paragraph_texts.append(text)
+                
+                if paragraph_texts:
+                    content = "\n\n".join(paragraph_texts)
+                    print(f"✅ Extracted content from paragraphs ({len(content)} characters)")
+            except:
+                pass
+            
+            # Method 2: Try to find the main content area
+            if not content or len(content) < 100:
+                try:
+                    main_content = driver.find_element(By.TAG_NAME, "main")
+                    content = main_content.text.strip()
+                    if len(content) > 100:
+                        print(f"✅ Extracted content from main tag ({len(content)} characters)")
+                except:
+                    pass
+        
+        # Final validation of content
+        if not content or len(content) < 100:
+            print(f"❌ Could not extract sufficient content for chapter {target_chapter}")
+            print(f"📊 Content length: {len(content) if content else 0} characters")
+            print(f"🌐 Final URL: {driver.current_url}")
+            
+            # Try to get page source for debugging
+            try:
+                page_source = driver.page_source
+                if "chapter" in page_source.lower() and len(page_source) > 1000:
+                    print("📝 Page loaded but content extraction failed")
+                    print("💡 The website might have changed its HTML structure")
+                else:
+                    print("📝 Page may not have loaded properly")
+            except:
+                pass
+            
             return 0
         
         # Save the chapter
         if save_chapter(title, content, target_chapter, output_dir):
             print(f"✅ Successfully downloaded and saved chapter {target_chapter}")
+            print(f"📊 Content: {len(content)} characters")
             return 1
         else:
             print(f"❌ Failed to save chapter {target_chapter}")
@@ -615,6 +958,21 @@ def scrape_novelbin_single_with_fresh_browser(series_url, target_chapter, output
         
     except Exception as e:
         print(f"❌ Error processing chapter {target_chapter}: {e}")
+        
+        # Enhanced error debugging
+        try:
+            current_url = driver.current_url
+            print(f"🌐 Current URL when error occurred: {current_url}")
+            
+            # Try to save page source for debugging
+            page_source = driver.page_source
+            debug_filename = f"debug_chapter_{target_chapter}_error.html"
+            with open(debug_filename, "w", encoding="utf-8") as f:
+                f.write(page_source)
+            print(f"🐛 Page source saved to {debug_filename} for debugging")
+        except:
+            print("🐛 Could not save debug information")
+        
         return 0
     finally:
         # Always close the browser for this chapter
@@ -650,6 +1008,12 @@ def scrape_novelbin_multiple(series_url, chapters_per_run, start, end, output_di
             downloaded += 1
             consecutive_failures = 0  # Reset failure counter on success
             print(f"✅ Successfully downloaded chapter {current_chapter}")
+            
+            # Progress announcement every 10 chapters
+            if VOICE_ENABLED and downloaded % 10 == 0 and downloaded > 0:
+                progress_message = f"Progress update: I have successfully downloaded {downloaded} chapters so far."
+                speak_message(progress_message)
+            
             current_chapter += 1
         else:
             consecutive_failures += 1
@@ -659,8 +1023,9 @@ def scrape_novelbin_multiple(series_url, chapters_per_run, start, end, output_di
             if consecutive_failures >= max_consecutive_failures:
                 print(f"🛑 Stopping after {max_consecutive_failures} consecutive failures")
                 print(f"📝 This usually means we've reached the end of available chapters")
-                # Play notification sound for early stop
-                play_notification_sound(success=True if downloaded > 0 else False)
+                # Announce early stop with voice
+                early_stop_message = f"Download stopped early. I downloaded {downloaded} chapters before reaching the end of available content."
+                play_notification_sound(success=True if downloaded > 0 else False, message=early_stop_message)
                 break
             
             # Try next chapter
@@ -672,7 +1037,7 @@ def scrape_novelbin_multiple(series_url, chapters_per_run, start, end, output_di
 def setup_chrome_driver():
     """Setup and return Chrome driver with optimal options"""
     options = Options()
-    options.add_argument("--headless")  # Enable headless mode
+    # options.add_argument("--headless")  # Enable headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-web-security")
@@ -748,6 +1113,11 @@ def main():
         end = latest + chapters_per_run
 
         print(f"\n🚀 Will download chapters {start} to {end}")
+        
+        # Voice announcement for starting download
+        if VOICE_ENABLED:
+            start_message = f"Starting download of {chapters_per_run} chapters from chapter {start} to {end}."
+            speak_message(start_message)
 
         # Use appropriate scraping method based on website
         if website_type == "katreadingcafe":
@@ -779,13 +1149,13 @@ def main():
         
         if downloaded == chapters_per_run:
             print("🔄 Run again to get more chapters.")
-            play_notification_sound(success=True)
+            announce_completion(downloaded, chapters_per_run, success=True)
         elif downloaded == 0:
             print("❌ No chapters were downloaded. Check for errors above.")
-            play_notification_sound(success=False)
+            announce_completion(downloaded, chapters_per_run, success=False)
         else:
             print(f"📊 Downloaded {downloaded} out of {chapters_per_run} requested chapters.")
-            play_notification_sound(success=True)
+            announce_completion(downloaded, chapters_per_run, success=True)
 
     except Exception as e:
         print(f"❌ Error: {e}")

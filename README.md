@@ -11,6 +11,8 @@ A comprehensive toolkit for downloading web novels and converting them to beauti
 - **Batch downloading**: Download 1-50 chapters at once
 - **Safe file naming**: Handles special characters and long titles
 - **Progress tracking**: Clear progress indicators and chapter counting
+- **🎙️ Voice notifications**: Spoken announcements when downloads start, progress, and complete
+- **Smart scrolling**: Advanced chapter loading for websites with dynamic content
 
 ### PDF Formatter (`format_novel_to_pdf.py`)
 - **Professional formatting**: Clean, readable PDF layout
@@ -118,6 +120,44 @@ python format_novel_to_pdf.py
 - **Fresh browser for each chapter** to avoid detection
 - Automatic breaks between downloads (10-20 seconds)
 - More resilient against anti-bot measures
+
+## 🎙️ Voice Notifications
+
+The scraper now includes voice announcements to keep you informed without watching the screen!
+
+### Features
+- **Start announcement**: "Starting download of 5 chapters from chapter 10 to 14"
+- **Progress updates**: Every 10 chapters, you'll hear progress reports
+- **Completion announcements**: Detailed results with time-based greetings
+- **Error notifications**: Voice alerts when downloads fail
+
+### Setup Voice Notifications
+
+1. **Install TTS packages** (run once):
+   ```bash
+   pip install pywin32 pyttsx3
+   ```
+   Or use the included installer:
+   ```bash
+   install_tts.bat
+   ```
+
+2. **Test voice system**:
+   ```bash
+   python test_voice.py
+   ```
+
+3. **Customize settings** in `scrape_novel.py`:
+   ```python
+   VOICE_ENABLED = True        # Enable/disable voice
+   VOICE_RATE = 180           # Speech speed (words per minute)
+   USE_GREETING = True        # Include "Good morning!" etc.
+   ```
+
+### Example Voice Messages
+- 🌅 **Morning**: "Good morning! Download completed successfully! I have downloaded all 5 chapters as requested."
+- 🌆 **Evening**: "Good evening! Progress update: I have successfully downloaded 10 chapters so far."
+- ❌ **Error**: "Download failed. No chapters were downloaded. Please check for errors."
 
 ## 📁 File Structure
 
