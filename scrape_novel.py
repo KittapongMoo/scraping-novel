@@ -174,6 +174,11 @@ def get_available_chapters_info(series_url, website_type):
     """Get information about available chapters from the website"""
     print(f"\n🔍 Checking available chapters on {website_type}...")
     
+    # Voice announcement for chapter discovery
+    if VOICE_ENABLED:
+        discovery_message = f"Starting chapter discovery for {website_type} website. This may take a moment."
+        speak_message(discovery_message)
+    
     driver = setup_chrome_driver()
     if not driver:
         print("❌ Could not setup browser to check chapters")
@@ -278,30 +283,220 @@ def get_available_chapters_info(series_url, website_type):
             except:
                 pass
             
-            # Scroll to load chapters more thoroughly
-            print("📜 Loading all available chapters...")
-            # First, scroll to bottom to trigger loading of all chapters
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(random.uniform(2, 3))
+            # Advanced chapter loading strategy for NovelBin
+            print("📜 Loading all available chapters systematically...")
             
-            # Then scroll incrementally to ensure all chapters are loaded
-            for i in range(8):  # Comprehensive scrolling
-                scroll_amount = random.randint(800, 1500)
+            def get_all_chapter_links():
+                """Get all chapter links currently loaded on the page with multiple selectors"""
+                chapters = set()
+                
+                # Try multiple selectors for maximum coverage
+                selectors = [
+                    "//a[contains(@href, '/chapter-')]",
+                    "//a[contains(@href, 'chapter')]",
+                    ".chapter-item a",
+                    ".list-chapter a", 
+                    "a[href*='chapter']",
+                    ".chapter-list a",
+                    ".chapter-number",
+                    "[data-chapter]"
+                ]
+                
+                for selector in selectors:
+                    try:
+                        if selector.startswith("//"):
+                            elements = driver.find_elements(By.XPATH, selector)
+                        else:
+                            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                        
+                        for element in elements:
+                            href = element.get_attribute("href")
+                            if href and 'chapter' in href.lower():
+                                # Try multiple patterns for chapter numbers
+                                patterns = [
+                                    r'chapter-(\d+)',
+                                    r'ch-(\d+)',
+                                    r'chapter/(\d+)',
+                                    r'c(\d+)',
+                                    r'chap-(\d+)',
+                                    r'chapter(\d+)',
+                                    r'/(\d+)/?$'  # Numbers at end of URL
+                                ]
+                                
+                                for pattern in patterns:
+                                    match = re.search(pattern, href)
+                                    if match:
+                                        chapters.add(int(match.group(1)))
+                                        break
+                    except:
+                        continue
+                
+                return chapters
+            
+            # CRITICAL FIX: Try to navigate to chapter 0 and 1 first to force loading from beginning
+            print("🎯 Attempting to force load early chapters by navigating to chapter 0 and 1...")
+            chapter_0_or_1_found = False
+            try:
+                # Try common chapter 0 and 1 URL patterns (many novels start with chapter 0)
+                base_url = series_url.rstrip('/')
+                early_chapter_patterns = [
+                    f"{base_url}/chapter-0",    # Try chapter 0 first
+                    f"{base_url}/ch-0", 
+                    f"{base_url}/c0",
+                    f"{base_url}/chapter/0",
+                    f"{base_url}/chapter-1",    # Then try chapter 1
+                    f"{base_url}/ch-1", 
+                    f"{base_url}/c1",
+                    f"{base_url}/chapter/1"
+                ]
+                
+                for pattern in early_chapter_patterns:
+                    try:
+                        print(f"   Trying: {pattern}")
+                        driver.get(pattern)
+                        time.sleep(3)
+                        
+                        # Check if we got a valid chapter page
+                        current_title = driver.title.lower()
+                        current_url = driver.current_url.lower()
+                        
+                        if ("chapter" in current_title and "404" not in current_title and 
+                            "not found" not in current_title and "chapter" in current_url):
+                            chapter_num = "0" if "/chapter-0" in pattern or "/ch-0" in pattern or "/c0" in pattern or "/chapter/0" in pattern else "1"
+                            print(f"✅ Successfully accessed chapter {chapter_num} via: {pattern}")
+                            chapter_0_or_1_found = True
+                            
+                            # Now go back to chapter list with early chapters likely cached
+                            driver.get(chapters_list_url)
+                            time.sleep(4)
+                            
+                            # Reactivate chapter tab
+                            try:
+                                chapter_tab = driver.find_element(By.CSS_SELECTOR, "#tab-chapters-title")
+                                if not chapter_tab.get_attribute("aria-expanded") == "true":
+                                    chapter_tab.click()
+                                    time.sleep(3)
+                            except:
+                                pass
+                            break
+                        else:
+                            print(f"   ❌ Invalid response from {pattern}")
+                    except Exception as e:
+                        print(f"   ❌ Failed {pattern}: {e}")
+                        continue
+                
+                if not chapter_0_or_1_found:
+                    print("⚠️ Could not pre-load chapter 0 or 1, proceeding with standard discovery")
+                    # Go back to chapter list URL
+                    driver.get(chapters_list_url)
+                    time.sleep(3)
+                    
+            except Exception as e:
+                print(f"⚠️ Error during chapter 1 pre-load: {e}")
+                # Ensure we're back on the chapter list page
+                driver.get(chapters_list_url)
+                time.sleep(3)
+            
+            # Start from the very top AFTER trying to load early chapters
+            print("📍 Starting systematic chapter discovery from top...")
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(3)
+            
+            # Track chapters found during scrolling
+            all_found_chapters = set()
+            last_count = 0
+            stable_iterations = 0
+            max_stable = 4  # Reduced for faster discovery
+            
+            # Get initial chapters that might be loaded
+            initial_chapters = get_all_chapter_links()
+            all_found_chapters.update(initial_chapters)
+            print(f"🔍 Initial chapters loaded: {len(initial_chapters)}")
+            if initial_chapters:
+                sorted_initial = sorted(initial_chapters)
+                print(f"   Range: {sorted_initial[0]} - {sorted_initial[-1]}")
+                if 0 in initial_chapters:
+                    print("✅ Chapter 0 found in initial load!")
+                elif 1 in initial_chapters:
+                    print("✅ Chapter 1 found in initial load!")
+            
+            # Progressive scrolling strategy optimized for early chapter discovery  
+            print("📜 Progressive scrolling to discover all chapters...")
+            
+            for scroll_iteration in range(25):  # Reasonable limit
+                # Smart scrolling: smaller increments early, larger later
+                if scroll_iteration < 5:
+                    # Very small scrolls at the beginning to catch early chapters
+                    scroll_amount = 200 + (scroll_iteration * 50)
+                elif scroll_iteration < 15:
+                    # Medium scrolls for middle content
+                    scroll_amount = 600 + (scroll_iteration * 100)
+                else:
+                    # Larger scrolls for comprehensive coverage
+                    scroll_amount = random.randint(1000, 1500)
+                
                 driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-                time.sleep(random.uniform(1, 2))
+                time.sleep(random.uniform(2.5, 4))  # Adequate wait for lazy loading
+                
+                # Get current chapters
+                current_chapters = get_all_chapter_links()
+                new_chapters = current_chapters - all_found_chapters
+                all_found_chapters.update(current_chapters)
+                
+                current_count = len(all_found_chapters)
+                print(f"📊 Iteration {scroll_iteration + 1}: {current_count} total chapters")
+                
+                if new_chapters:
+                    new_sorted = sorted(new_chapters)
+                    print(f"   New chapters: {new_sorted[:5]}{'...' if len(new_sorted) > 5 else ''}")
+                    # Reset stability counter when finding new chapters
+                    stable_iterations = 0
+                else:
+                    stable_iterations += 1
+                
+                # Early termination if no new chapters for several iterations
+                if stable_iterations >= max_stable:
+                    print(f"📝 Stable at {current_count} chapters for {max_stable} iterations")
+                    break
+                
+                # Check if we've reached the bottom
+                scroll_height = driver.execute_script("return document.body.scrollHeight;")
+                current_scroll = driver.execute_script("return window.pageYOffset;")
+                window_height = driver.execute_script("return window.innerHeight;")
+                
+                if current_scroll + window_height >= scroll_height - 100:
+                    print("📝 Reached bottom of page")
+                    # Final wait and check
+                    time.sleep(3)
+                    final_chapters = get_all_chapter_links()
+                    all_found_chapters.update(final_chapters)
+                    break
             
-            # Final scroll to bottom to ensure everything is loaded
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(random.uniform(2, 3))
+            # Convert to list and add to available_chapters
+            for chapter_num in all_found_chapters:
+                available_chapters.append(chapter_num)
             
-            # Find chapter links
-            chapter_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/chapter-')]")
-            for link in chapter_links:
-                href = link.get_attribute("href")
-                chapter_num_match = re.search(r'chapter-(\d+)', href)
-                if chapter_num_match:
-                    chapter_num = int(chapter_num_match.group(1))
-                    available_chapters.append(chapter_num)
+            print(f"🎯 Total unique chapters discovered: {len(all_found_chapters)}")
+            if all_found_chapters:
+                min_found = min(all_found_chapters)
+                max_found = max(all_found_chapters)
+                print(f"📈 Chapter range: {min_found} - {max_found}")
+                
+                # Verify we got early chapters
+                sorted_chapters = sorted(all_found_chapters)
+                if 0 in all_found_chapters:
+                    print("✅ SUCCESS: Chapter 0 discovered! (Novel starts from Chapter 0)")
+                elif 1 in all_found_chapters:
+                    print("✅ SUCCESS: Chapter 1 discovered! (Novel starts from Chapter 1)")
+                else:
+                    print(f"⚠️ Early chapters not found. Earliest: {sorted_chapters[0] if sorted_chapters else 'None'}")
+                
+                # Show examples
+                if len(sorted_chapters) >= 20:
+                    print(f"📋 First 10 chapters: {sorted_chapters[:10]}")
+                    print(f"📋 Last 10 chapters: {sorted_chapters[-10:]}")
+                elif len(sorted_chapters) > 0:
+                    print(f"📋 All chapters found: {sorted_chapters}")
         
         # Sort and remove duplicates
         available_chapters = sorted(list(set(available_chapters)))
@@ -311,6 +506,11 @@ def get_available_chapters_info(series_url, website_type):
             max_chapter = max(available_chapters)
             print(f"✅ Found {len(available_chapters)} chapters")
             print(f"📊 Chapter range: {min_chapter} - {max_chapter}")
+            
+            # Voice announcement for discovery results
+            if VOICE_ENABLED:
+                result_message = f"Chapter discovery complete. Found {len(available_chapters)} chapters from chapter {min_chapter} to {max_chapter}."
+                speak_message(result_message)
             
             # Show some examples
             if len(available_chapters) <= 10:
@@ -322,6 +522,8 @@ def get_available_chapters_info(series_url, website_type):
             return min_chapter, max_chapter, latest_volume
         else:
             print("❌ No chapters found")
+            if VOICE_ENABLED:
+                speak_message("Chapter discovery failed. No chapters were found on this website.")
             return None, None, None
             
     except Exception as e:
@@ -695,8 +897,8 @@ def scrape_novelbin_single_with_fresh_browser(series_url, target_chapter, output
         except:
             pass
         
-        # Advanced chapter loading with dynamic scroll detection
-        print("📜 Loading chapters with intelligent scrolling...")
+        # Smart chapter loading prioritizing early chapters
+        print("📜 Loading chapters with early chapter priority...")
         
         def get_current_chapters():
             """Get all chapter links currently loaded on the page"""
@@ -722,22 +924,35 @@ def scrape_novelbin_single_with_fresh_browser(series_url, target_chapter, output
             
             return list(set(all_links))  # Remove duplicates
         
-        # Initial scroll to load base content
-        driver.execute_script("window.scrollTo(0, 0);")  # Start from top
+        # Start from the very top to prioritize early chapters
+        driver.execute_script("window.scrollTo(0, 0);")
         time.sleep(2)
         
+        # Check if target chapter is in early chapters (likely to be found quickly)
+        early_chapter_threshold = 100
+        is_early_chapter = target_chapter <= early_chapter_threshold
+        
         last_chapter_count = 0
-        max_iterations = 20
+        max_iterations = 25 if is_early_chapter else 30  # Adjust iterations based on target
         stable_count = 0
+        
+        print(f"🎯 Searching for chapter {target_chapter} ({'early' if is_early_chapter else 'later'} chapter)")
         
         for iteration in range(max_iterations):
             # Scroll down incrementally
             scroll_height = driver.execute_script("return document.body.scrollHeight;")
             current_scroll = driver.execute_script("return window.pageYOffset;")
             
-            # Scroll by 1/4 of remaining height or 1500px, whichever is smaller
-            remaining_height = scroll_height - current_scroll
-            scroll_amount = min(1500, remaining_height // 4) if remaining_height > 0 else 1500
+            # Adaptive scrolling strategy for better early chapter detection
+            if is_early_chapter and iteration < 10:
+                # For early chapters, scroll more gradually from the top
+                scroll_amount = 400 + (iteration * 150)
+            elif iteration < 15:
+                # Medium scrolls for middle range
+                scroll_amount = random.randint(600, 1000)
+            else:
+                # Larger scrolls for comprehensive coverage
+                scroll_amount = random.randint(1000, 1500)
             
             driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
             time.sleep(random.uniform(2, 4))  # Wait longer for content to load
@@ -1108,9 +1323,16 @@ def main():
         return
 
     try:
-        # Get latest chapter and calculate range
-        start = latest + 1
-        end = latest + chapters_per_run
+        # Calculate range, accounting for novels that start from Chapter 0
+        if latest == 0 and min_available is not None and min_available == 0:
+            # Novel starts from Chapter 0 and user has no chapters downloaded
+            start = 0
+            print("📝 Novel starts from Chapter 0, beginning download from Chapter 0")
+        else:
+            # Standard case: start from next chapter after latest downloaded
+            start = latest + 1
+        
+        end = start + chapters_per_run - 1  # Fixed: end should be inclusive
 
         print(f"\n🚀 Will download chapters {start} to {end}")
         
