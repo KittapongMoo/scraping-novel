@@ -26,3 +26,6 @@ env/
 # Ignore temporary files
 *.tmp
 *.temp
+
+# Ignore launcher shortcuts (local utilities)
+*.lnk
